@@ -29,7 +29,7 @@ Transpose annotation from a previous genome version to a new one using the same 
 
 =head1 SYNOPSIS
 
-transpose_annotation -og gff_file -ng gff_file -a gff_file -o gff_file 
+transpose_annotation -og gff_file -ng gff_file -a file -o file 
 
 =cut
 
@@ -59,13 +59,13 @@ A GFF file containing the scaffold position on the old genome version
 
 A GFF file containing the scaffold position on the new genome version
 
-=item B<[-a]> ([a gff file]): 
+=item B<[-a]> ([a gff or vcf file]): 
 
 The annotation to transpose
 
 =item B<[-o]> ([a file]): 
 
-The transposed annotation on the new genome
+The transposed annotation on the new genome. It will be in the same formatas the input
 
 =cut
 
@@ -136,125 +136,234 @@ if(open($output_handle, ">".$output))
 	my $intersect_handle;
 	if(open($intersect_handle, $output.".tmp"))
 	{
-		while(my $line=<$intersect_handle>)
+		if($to_transpose =~ m/\.gff/)
 		{
-			my @splitted = split('\t', $line);
-		
-			my $start_on_scaffold = 0;
-			my $end_on_scaffold = 0;
-			my $strand_on_scaffold = 1;
-			
-			my $feature_start = $splitted[3];
-			my $feature_end = $splitted[4];
-			
-			my $scaffold_start = $splitted[12];
-			my $scaffold_end = $splitted[13];
-			
-			my $scaffold_strand = 1;
-			if($splitted[15] eq "-" )
+			while(my $line=<$intersect_handle>)
 			{
-				$scaffold_strand = -1;
-			}
-			my $feature_strand = 1;
-			if($splitted[5] eq "-" )
-			{
-				$feature_strand = -1;
-			}
+				my @splitted = split('\t', $line);
 			
-			$splitted[17] =~ m/ID=([^;]*)/;
-			my $scaffold_id = $1;
-			
-			#First recover position of the feature on the scaffold
-			
-			#if scaffold is on positive strand
-			if($scaffold_strand == 1)
-			{
-				$start_on_scaffold = $feature_start - $scaffold_start +1 ;
-				$end_on_scaffold = $feature_end - $scaffold_start + 1;
-			}
-			else
-			{
-				$start_on_scaffold = ($scaffold_end - $scaffold_start)  - ($feature_end - $scaffold_start)+1;
-				$end_on_scaffold = ($scaffold_end - $scaffold_start)  - ($feature_start - $scaffold_start)+1;
-			}
-			
-			if( $feature_strand ne $scaffold_strand)
-			{
-				$strand_on_scaffold = -1;
-			}  	
-			
-			#Transpose annotation on the new genome version
-			
-			#Create a new generic feature                             
+				my $start_on_scaffold = 0;
+				my $end_on_scaffold = 0;
+				my $strand_on_scaffold = 1;
+				
+				my $feature_start = $splitted[3];
+				my $feature_end = $splitted[4];
+				
+				my $scaffold_start = $splitted[12];
+				my $scaffold_end = $splitted[13];
+				
+				my $scaffold_strand = 1;
+				if($splitted[15] eq "-" )
+				{
+					$scaffold_strand = -1;
+				}
+				my $feature_strand = 1;
+				if($splitted[5] eq "-" )
+				{
+					$feature_strand = -1;
+				}
+				
+				$splitted[17] =~ m/ID=([^;]*)/;
+				my $scaffold_id = $1;
+				
+				#First recover position of the feature on the scaffold
+				
+				#if scaffold is on positive strand
+				if($scaffold_strand == 1)
+				{
+					$start_on_scaffold = $feature_start - $scaffold_start +1 ;
+					$end_on_scaffold = $feature_end - $scaffold_start + 1;
+				}
+				else
+				{
+					$start_on_scaffold = ($scaffold_end - $scaffold_start)  - ($feature_end - $scaffold_start)+1;
+					$end_on_scaffold = ($scaffold_end - $scaffold_start)  - ($feature_start - $scaffold_start)+1;
+				}
+				
+				if( $feature_strand ne $scaffold_strand)
+				{
+					$strand_on_scaffold = -1;
+				}  	
+				
+				#Transpose annotation on the new genome version
+				
+				#Create a new generic feature                             
 
-#			my $transposed_feature = new Bio::SeqFeature::Generic ( -start => 1, -end => 1,
-#									-strand => 1, -primary => $splitted[2],
-#									-source_tag   => $splitted[1],
-#									-seq_id => "chr",
-#									-score  => $splitted[5],
-#									 );
-									 
-		   
-			
-			#Recover the corresponding scaffold on the new genome
-			if(exists($new_gen{$scaffold_id}))
+	#			my $transposed_feature = new Bio::SeqFeature::Generic ( -start => 1, -end => 1,
+	#									-strand => 1, -primary => $splitted[2],
+	#									-source_tag   => $splitted[1],
+	#									-seq_id => "chr",
+	#									-score  => $splitted[5],
+	#									 );
+										 
+			   
+				
+				#Recover the corresponding scaffold on the new genome
+				if(exists($new_gen{$scaffold_id}))
+				{
+					 my $scaffold_on_new = $new_gen{$scaffold_id};
+				
+					#Change coordinate, strand and seq of this feature
+					
+					my ($start, $end, $strand, $seq);
+					
+					$seq = $scaffold_on_new->seq_id();
+					
+					if($strand_on_scaffold == $scaffold_on_new->strand())
+					{
+						$strand = 1;
+					}
+					else
+					{
+						$strand = -1;
+					}
+					
+					if($scaffold_on_new->strand() == 1)
+					{
+						$start = $start_on_scaffold + $scaffold_on_new->start() - 1;
+						$end = $end_on_scaffold + $scaffold_on_new->start() - 1;
+					}
+					else
+					{
+						$end =  $scaffold_on_new->end() - $start_on_scaffold  + 1;
+						$start  = $scaffold_on_new->end() - $end_on_scaffold  + 1;
+					}
+					
+	#				$transposed_feature->start($start);
+	#				$transposed_feature->end($end);
+	#				$transposed_feature->strand($strand);
+	#				$transposed_feature->seq_id($seq);
+					
+	#				$output_handle->write_feature($transposed_feature);
+					my $str='+';
+					if($strand==-1)
+					{
+						$str='-';
+					}
+					my $toprint = join("\t",
+										$seq,
+										$splitted[1],
+										$splitted[2],
+										$start,
+										$end,
+										$splitted[5],
+										$str,
+										$splitted[7],
+										$splitted[8]);
+					print $output_handle $toprint."\n";
+				}
+				else
+				{
+					print "No ".$scaffold_id." found in the new genome version\n";
+				}
+			   
+			}
+		}
+		elsif($to_transpose =~ m/\.vcf/)
+		{
+			#We need to determine the number of fields in the VCF
+			my $to_transpose_handle;
+			my $field_number;
+			if(open($to_transpose_handle, $to_transpose))
 			{
-				 my $scaffold_on_new = $new_gen{$scaffold_id};
-			
-				#Change coordinate, strand and seq of this feature
-				
-				my ($start, $end, $strand, $seq);
-				
-				$seq = $scaffold_on_new->seq_id();
-				
-				if($strand_on_scaffold == $scaffold_on_new->strand())
+				while(my $line=<$to_transpose_handle>)
 				{
-					$strand = 1;
+					if($line =~ m/^##/)
+					{
+						print $output_handle $line;
+					}
+					else
+					{
+						print $output_handle $line;
+						my @splitted = split('\t', $line);
+						$field_number = scalar(@splitted);
+						last;
+					}
 				}
-				else
-				{
-					$strand = -1;
-				}
-				
-				if($scaffold_on_new->strand() == 1)
-				{
-					$start = $start_on_scaffold + $scaffold_on_new->start() - 1;
-					$end = $end_on_scaffold + $scaffold_on_new->start() - 1;
-				}
-				else
-				{
-					$end =  $scaffold_on_new->end() - $start_on_scaffold  + 1;
-					$start  = $scaffold_on_new->end() - $end_on_scaffold  + 1;
-				}
-				
-#				$transposed_feature->start($start);
-#				$transposed_feature->end($end);
-#				$transposed_feature->strand($strand);
-#				$transposed_feature->seq_id($seq);
-				
-#				$output_handle->write_feature($transposed_feature);
-				my $str='+';
-				if($strand==-1)
-				{
-					$str='-';
-				}
-				my $toprint = join("\t",
-									$seq,
-									$splitted[1],
-									$splitted[2],
-									$start,
-									$end,
-									$splitted[5],
-									$str,
-									$splitted[7],
-									$splitted[8]);
-				print $output_handle $toprint."\n";
 			}
 			else
 			{
-				print "No ".$scaffold_id." found in the new genome version\n";
+				print("Cannot open $to_transpose");
+				exit(0);
 			}
-		   
+			while(my $line=<$intersect_handle>)
+			{
+				my @splitted = split('\t', $line);
+				#Recover the Variant positions
+				my $pos_on_scaffold = 0;
+				
+				my $feature_pos = $splitted[1];
+				
+				my $scaffold_start = $splitted[$field_number+3];
+				my $scaffold_end = $splitted[$field_number+4];
+				
+				my $scaffold_strand = 1;
+				if($splitted[$field_number+6] eq "-" )
+				{
+					$scaffold_strand = -1;
+				}
+				
+				$splitted[$field_number+8] =~ m/ID=([^;]*)/;
+				my $scaffold_id = $1;
+				
+				if($scaffold_strand == 1)
+				{
+					$pos_on_scaffold = $feature_pos - $scaffold_start +1 ;
+				}
+				else
+				{
+					$pos_on_scaffold = ($scaffold_end - $scaffold_start)  - ($feature_pos - $scaffold_start)+1;
+				}
+				
+				#Recover the corresponding scaffold on the new genome
+				if(exists($new_gen{$scaffold_id}))
+				{
+					my $scaffold_on_new = $new_gen{$scaffold_id};
+				
+					#Change coordinate, strand and seq of this feature
+					
+					my ($pos, $strand, $seq);
+					
+					$seq = $scaffold_on_new->seq_id();
+					
+					if($scaffold_strand == $scaffold_on_new->strand())
+					{
+						$strand = 1;
+					}
+					else
+					{
+						$strand = -1;
+					}
+					
+					if($scaffold_on_new->strand() == 1)
+					{
+						$pos = $pos_on_scaffold + $scaffold_on_new->start() - 1;
+					}
+					else
+					{
+						$pos =  $scaffold_on_new->end() - $pos_on_scaffold  + 1;
+					}
+					$splitted[1] = $pos;
+					#if scaffold in both version are not on the same strand, then get the allele reverse/complement
+					if($strand == -1)
+					{
+						$splitted[3] = reverse($splitted[3]);
+						$splitted[3] =~ tr/ACGT/TGCA/ ;
+						$splitted[4] = reverse($splitted[4]);
+						$splitted[4] =~ tr/ACGT/TGCA/ ;
+					}
+					my $to_print= $splitted[0];
+					for(my $i=1;$i<$field_number;$i++)
+					{
+						$to_print .= "\t".$splitted[$i];
+					}
+					
+					print $output_handle $to_print."\n";
+				}
+			}
+			
+			#CAVEAT for indels it is not the exact reverse/complement that should be given
+			
 		}
 		 $output_handle -> close();
 	}
